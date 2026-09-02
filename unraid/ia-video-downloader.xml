@@ -1,0 +1,49 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>IA-Video-Downloader</Name>
+  <Repository>ghcr.io/OWNER/ia-video-downloader:latest</Repository>
+  <Registry>https://ghcr.io/OWNER/ia-video-downloader</Registry>
+  <Network>bridge</Network>
+  <MyIP/>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/OWNER/ia-video-downloader/issues</Support>
+  <Project>https://github.com/OWNER/ia-video-downloader</Project>
+  <Overview>
+    Browse video collections on the Internet Archive (archive.org) from a simple web GUI
+    and download individual videos or entire collections. Choose which formats to pull
+    (h.264, MPEG4, Ogg, Matroska, originals vs. derivatives), grab subtitles, queue
+    multiple jobs, and watch progress with pause / resume / retry. Downloads resume after
+    restarts. Files are organised as /downloads/&lt;collection&gt;/&lt;identifier&gt;/&lt;file&gt;.
+  </Overview>
+  <Category>Downloaders: MediaApp:Video Tools:</Category>
+  <WebUI>http://[IP]:[PORT:8000]/</WebUI>
+  <TemplateURL/>
+  <Icon>https://archive.org/images/glogo.png</Icon>
+  <ExtraParams/>
+  <PostArgs/>
+  <CPUset/>
+  <DateInstalled/>
+  <DonateText/>
+  <DonateLink/>
+  <Description>
+    Browse and download videos from archive.org. Search for collections or individual
+    videos, pick formats, and queue single items or whole collections for download.
+  </Description>
+
+  <Config Name="WebUI Port" Target="8000" Default="8000" Mode="tcp" Description="Web interface port" Type="Port" Display="always" Required="true" Mask="false">8000</Config>
+
+  <Config Name="Downloads" Target="/downloads" Default="/mnt/user/media/archive.org" Mode="rw" Description="Where downloaded videos are saved" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/media/archive.org</Config>
+
+  <Config Name="Config" Target="/config" Default="/mnt/user/appdata/ia-video-downloader" Mode="rw" Description="Database and settings" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/ia-video-downloader</Config>
+
+  <Config Name="PUID" Target="PUID" Default="99" Mode="" Description="User ID that owns downloaded files" Type="Variable" Display="advanced" Required="true" Mask="false">99</Config>
+
+  <Config Name="PGID" Target="PGID" Default="100" Mode="" Description="Group ID that owns downloaded files" Type="Variable" Display="advanced" Required="true" Mask="false">100</Config>
+
+  <Config Name="UMASK" Target="UMASK" Default="022" Mode="" Description="Umask for created files" Type="Variable" Display="advanced" Required="false" Mask="false">022</Config>
+
+  <Config Name="Simultaneous downloads" Target="CONCURRENCY" Default="3" Mode="" Description="How many files to download at once (also editable in Settings)" Type="Variable" Display="always" Required="false" Mask="false">3</Config>
+
+  <Config Name="Max items per collection" Target="MAX_COLLECTION_ITEMS" Default="0" Mode="" Description="Default cap on items pulled from a collection (0 = unlimited)" Type="Variable" Display="advanced" Required="false" Mask="false">0</Config>
+</Container>

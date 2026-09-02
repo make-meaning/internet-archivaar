@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Internet Archive Video Downloader</title>
+  <link rel="stylesheet" href="/assets/style.css?v=1.0.0">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%93%BC%3C/text%3E%3C/svg%3E">
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <span class="logo">📼</span>
+      <h1>Internet Archive <span>Video Downloader</span></h1>
+    </div>
+    <nav>
+      <button data-tab="browse" class="active">Browse</button>
+      <button data-tab="queue">Queue <span id="queue-badge" class="badge" hidden>0</span></button>
+      <button data-tab="settings">Settings</button>
+    </nav>
+  </header>
+
+  <main>
+    <!-- BROWSE -->
+    <section id="tab-browse" class="tab active">
+      <form id="search-form" class="search-bar">
+        <div class="seg">
+          <label><input type="radio" name="stype" value="collection" checked> Collections</label>
+          <label><input type="radio" name="stype" value="video"> Videos</label>
+        </div>
+        <input type="search" id="search-input" placeholder="Search archive.org…" autocomplete="off">
+        <select id="sort-select">
+          <option value="">Relevance</option>
+          <option value="downloads desc">Most downloaded</option>
+          <option value="publicdate desc">Newest</option>
+          <option value="publicdate asc">Oldest</option>
+          <option value="titleSorter asc">Title A–Z</option>
+        </select>
+        <button type="submit">Search</button>
+      </form>
+
+      <div id="crumbs" class="crumbs" hidden></div>
+      <div id="results" class="grid"></div>
+      <div id="pager" class="pager" hidden>
+        <button id="prev-page">← Prev</button>
+        <span id="page-info"></span>
+        <button id="next-page">Next →</button>
+      </div>
+      <p id="browse-empty" class="empty">Search for a collection or a single video to get started.</p>
+    </section>
+
+    <!-- QUEUE -->
+    <section id="tab-queue" class="tab">
+      <div class="queue-head">
+        <h2>Download queue</h2>
+        <div class="queue-actions">
+          <span id="disk-info" class="muted"></span>
+        </div>
+      </div>
+      <div id="jobs"></div>
+      <p id="queue-empty" class="empty">Nothing queued yet.</p>
+    </section>
+
+    <!-- SETTINGS -->
+    <section id="tab-settings" class="tab">
+      <h2>Settings</h2>
+      <div class="card settings-card">
+        <label class="field">
+          <span>Simultaneous downloads</span>
+          <input type="number" id="set-concurrency" min="1" max="10">
+        </label>
+        <label class="field">
+          <span>archive.org cookies <small>(optional — for members-only items; paste your <code>logged-in-user</code> / <code>logged-in-sig</code> cookies)</small></span>
+          <textarea id="set-cookies" rows="3" placeholder="logged-in-user=...; logged-in-sig=..."></textarea>
+        </label>
+        <div class="field">
+          <span>Download directory</span>
+          <code id="set-dir" class="dir"></code>
+        </div>
+        <div class="field">
+          <span>Disk</span>
+          <div id="set-disk" class="muted"></div>
+        </div>
+        <button id="save-settings">Save</button>
+        <span id="settings-saved" class="saved" hidden>Saved ✓</span>
+      </div>
+    </section>
+  </main>
+
+  <!-- DOWNLOAD OPTIONS MODAL -->
+  <div id="modal" class="modal" hidden>
+    <div class="modal-box">
+      <h3 id="modal-title">Download options</h3>
+      <p id="modal-sub" class="muted"></p>
+
+      <div class="opt-row" id="opt-formats-row">
+        <span class="opt-label">Formats</span>
+        <div id="opt-formats" class="chips"></div>
+      </div>
+
+      <div class="opt-row">
+        <span class="opt-label">Pick</span>
+        <label><input type="radio" name="mode" value="all" checked> All matching files</label>
+        <label><input type="radio" name="mode" value="best"> Best video only (largest) per item</label>
+      </div>
+
+      <div class="opt-row">
+        <span class="opt-label">Source</span>
+        <label><input type="radio" name="source" value="any" checked> Any</label>
+        <label><input type="radio" name="source" value="original"> Originals only</label>
+        <label><input type="radio" name="source" value="derivative"> Derivatives only</label>
+      </div>
+
+      <div class="opt-row">
+        <span class="opt-label">Also grab</span>
+        <label><input type="checkbox" id="opt-subs" checked> Subtitles / captions</label>
+        <label><input type="checkbox" id="opt-thumbs"> Thumbnails</label>
+      </div>
+
+      <div class="opt-row" id="opt-maxitems-row" hidden>
+        <span class="opt-label">Max items</span>
+        <input type="number" id="opt-maxitems" min="0" value="0" placeholder="0 = all">
+        <small class="muted">Limit how many videos to pull from the collection (0 = all).</small>
+      </div>
+
+      <div class="opt-row">
+        <span class="opt-label">Subfolder</span>
+        <input type="text" id="opt-subfolder" placeholder="(optional) override output folder name">
+      </div>
+
+      <div class="modal-actions">
+        <button id="modal-cancel" class="ghost">Cancel</button>
+        <button id="modal-go">Add to queue</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast" hidden></div>
+
+  <script src="/assets/app.js?v=1.0.0"></script>
+</body>
+</html>

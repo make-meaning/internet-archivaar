@@ -1,0 +1,17 @@
+services:
+  ia-video-downloader:
+    build: .
+    image: ia-video-downloader:latest
+    container_name: ia-video-downloader
+    ports:
+      - "8000:8000"
+    environment:
+      PUID: "1000"
+      PGID: "1000"
+      UMASK: "022"
+      CONCURRENCY: "3"
+      # MAX_COLLECTION_ITEMS: "0"   # 0 = unlimited
+    volumes:
+      - ./data/config:/config
+      - ./data/downloads:/downloads
+    restart: unless-stopped
