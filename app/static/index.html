@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Internet Archive Video Downloader</title>
-  <link rel="stylesheet" href="/assets/style.css?v=1.0.0">
+  <link rel="stylesheet" href="/assets/style.css?v=1.1.0">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%93%BC%3C/text%3E%3C/svg%3E">
 </head>
 <body>
@@ -28,7 +28,7 @@
           <label><input type="radio" name="stype" value="collection" checked> Collections</label>
           <label><input type="radio" name="stype" value="video"> Videos</label>
         </div>
-        <input type="search" id="search-input" placeholder="Search archive.org…" autocomplete="off">
+        <input type="search" id="search-input" placeholder="Search, or paste an archive.org/details/… link" autocomplete="off">
         <select id="sort-select">
           <option value="">Relevance</option>
           <option value="downloads desc">Most downloaded</option>
@@ -137,6 +137,6 @@
 
   <div id="toast" class="toast" hidden></div>
 
-  <script src="/assets/app.js?v=1.0.0"></script>
+  <script src="/assets/app.js?v=1.1.0"></script>
 </body>
 </html>

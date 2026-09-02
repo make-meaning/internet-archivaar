@@ -43,7 +43,9 @@ const state = { view: "search", q: "", type: "collection", sort: "",
 
 $("#search-form").addEventListener("submit", (e) => {
   e.preventDefault();
-  state.q = $("#search-input").value.trim();
+  const raw = $("#search-input").value.trim();
+  if (looksLikeIdentifier(raw)) { resolveAndOpen(raw); return; }
+  state.q = raw;
   state.type = $$("input[name=stype]").find((r) => r.checked).value;
   state.sort = $("#sort-select").value;
   state.page = 1;
@@ -51,6 +53,34 @@ $("#search-form").addEventListener("submit", (e) => {
   state.collectionId = null;
   runSearch();
 });
+
+// Paste an archive.org link and it jumps straight there.
+$("#search-input").addEventListener("paste", (e) => {
+  const t = (e.clipboardData || window.clipboardData).getData("text").trim();
+  if (/archive\.org\//i.test(t)) {
+    e.preventDefault();
+    $("#search-input").value = t;
+    resolveAndOpen(t);
+  }
+});
+
+const looksLikeIdentifier = (s) => /archive\.org\//i.test(s) || /^https?:\/\//i.test(s);
+
+async function resolveAndOpen(raw) {
+  setResultsLoading();
+  $("#crumbs").hidden = true;
+  try {
+    const r = await api(`/api/resolve?input=${encodeURIComponent(raw)}`);
+    $("#search-input").value = "";
+    if (r.kind === "collection") {
+      $$("input[name=stype]").forEach((x) => (x.checked = x.value === "collection"));
+      openCollection(r.identifier);
+    } else {
+      openItem(r.identifier);
+      toast(`Opened item · ${r.video_files} video file${r.video_files === 1 ? "" : "s"}`);
+    }
+  } catch (e) { showError(e); }
+}
 $("#sort-select").addEventListener("change", () => {
   state.sort = $("#sort-select").value;
   state.page = 1;
@@ -141,20 +171,33 @@ async function openItem(identifier, autoModal) {
   try {
     const it = await api(`/api/item/${encodeURIComponent(identifier)}`);
     $("#crumbs").hidden = false;
-    const backLabel = state.view === "collection" ? "← Collection" : "← Results";
+    const inColl = state.view === "collection" && state.collectionId;
+    const hasResults = state.view === "search" && state.q;
+    const backLabel = inColl ? "← Collection" : hasResults ? "← Results" : "← Browse";
     $("#crumbs").innerHTML = `<a id="back-x">${backLabel}</a> &nbsp;/&nbsp; <strong>${esc(it.title)}</strong>`;
-    $("#back-x").onclick = () =>
-      state.view === "collection" ? openCollection(state.collectionId, true) : runSearch();
+    $("#back-x").onclick = () => {
+      if (inColl) return openCollection(state.collectionId, true);
+      if (hasResults) return runSearch();
+      $("#crumbs").hidden = true;
+      $("#results").innerHTML = "";
+      $("#browse-empty").hidden = false;
+    };
 
-    const videos = it.files.filter((f) => f.kind === "video");
-    const rows = it.files.map((f) => `
+    const CAP = 400;
+    const files = [...it.files].sort((a, b) =>
+      (a.kind === "video" ? 0 : 1) - (b.kind === "video" ? 0 : 1));
+    const shown = files.slice(0, CAP);
+    const rows = shown.map((f) => `
       <tr>
         <td>${esc(f.name)}</td>
         <td>${esc(f.format || "")}</td>
         <td>${esc(f.source || "")}</td>
         <td class="num">${f.size ? fmtBytes(f.size) : ""}</td>
         <td><button class="small ghost" data-file="${esc(f.name)}">⬇</button></td>
-      </tr>`).join("");
+      </tr>`).join("") +
+      (files.length > CAP
+        ? `<tr><td colspan="5" class="muted">…and ${files.length - CAP} more — use “Download this item…” to grab them all.</td></tr>`
+        : "");
 
     $("#results").innerHTML = `
       <div class="detail">

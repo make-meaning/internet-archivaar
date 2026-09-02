@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import re
 import shutil
 from contextlib import asynccontextmanager
 from pathlib import Path
+from urllib.parse import unquote
 
 import httpx
 from fastapi import FastAPI, HTTPException, Query
@@ -40,6 +42,46 @@ def api_search(q: str = "", type: str = Query("collection", pattern="^(collectio
     except httpx.HTTPError as exc:
         raise HTTPException(502, f"archive.org error: {exc}") from exc
     return res
+
+
+_IA_URL = re.compile(
+    r"archive\.org/(?:details|download|metadata|embed|search)/([^/?#\s]+)", re.I)
+
+
+def extract_identifier(text: str) -> str | None:
+    text = (text or "").strip()
+    m = _IA_URL.search(text)
+    if m:
+        return unquote(m.group(1))
+    # a bare identifier: no scheme, no spaces, no slashes
+    if text and not text.startswith("http") and "/" not in text and " " not in text:
+        return text
+    return None
+
+
+@app.get("/api/resolve")
+def api_resolve(input: str):
+    """Turn a pasted archive.org URL (or bare identifier) into a routing target."""
+    ident = extract_identifier(input)
+    if not ident:
+        raise HTTPException(400, "No archive.org identifier or URL found in that input.")
+    try:
+        meta = archive.metadata(ident)
+    except httpx.HTTPError as exc:
+        raise HTTPException(502, f"archive.org error: {exc}") from exc
+    md = meta.get("metadata") or {}
+    if not md:
+        raise HTTPException(404, f"Nothing found for '{ident}'.")
+    mt = md.get("mediatype")
+    n_video = sum(1 for f in meta.get("files", [])
+                  if archive.classify_file(f) == "video")
+    return {
+        "identifier": ident,
+        "title": md.get("title") or ident,
+        "mediatype": mt,
+        "kind": "collection" if mt == "collection" else "item",
+        "video_files": n_video,
+    }
 
 
 @app.get("/api/collection/{cid}")
