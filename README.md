@@ -11,10 +11,19 @@ with an Unraid Community Applications template.
 
 - **Browse** – search archive.org for *collections* or *individual videos*, page through
   results, open a collection to see its items, open an item to see every file.
-- **Download** – a single file, a whole item, or an entire collection.
+- **Paste a link** – drop an `archive.org/details/…` URL (or bare identifier) into the
+  search box and it jumps straight to that collection or item. Example:
+  `https://archive.org/details/WildlifeDocumentaries/` — an item bundling ~1,165 videos.
+- **Download** – a single file, everything in one format, a whole item, or an entire
+  collection.
+- **By format** – the item view lists every video format present
+  (`h.264 — 341 files, 84.7 GB`, `Cinepack — 340 files, 165 GB`, …) each with a one-click
+  *Download all* button.
+- **Sortable file list** – click the File / Format / Source / Size headers to sort;
+  the list scrolls inside its card instead of overflowing.
 - **Format options** – per download you choose:
-  - which video formats to keep (h.264, MPEG4, Ogg Video, Matroska, QuickTime… – the
-    list is populated from the item's actual files), or leave blank for *all*
+  - which video formats to keep (populated from the item's actual files), or leave blank
+    for *all*
   - *All matching files* vs *best video only* (largest per item)
   - originals only / derivatives only / any
   - also grab subtitles / captions and/or thumbnails

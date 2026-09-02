@@ -44,14 +44,10 @@ const state = { view: "search", q: "", type: "collection", sort: "",
 $("#search-form").addEventListener("submit", (e) => {
   e.preventDefault();
   const raw = $("#search-input").value.trim();
-  if (looksLikeIdentifier(raw)) { resolveAndOpen(raw); return; }
-  state.q = raw;
-  state.type = $$("input[name=stype]").find((r) => r.checked).value;
-  state.sort = $("#sort-select").value;
-  state.page = 1;
-  state.view = "search";
-  state.collectionId = null;
-  runSearch();
+  if (!raw) { toast("Enter a search term or paste an archive.org link"); return; }
+  if (isUrl(raw)) { resolveAndOpen(raw, false); return; }
+  if (isBareIdentifier(raw)) { resolveAndOpen(raw, true); return; }
+  doSearch(raw);
 });
 
 // Paste an archive.org link and it jumps straight there.
@@ -60,26 +56,41 @@ $("#search-input").addEventListener("paste", (e) => {
   if (/archive\.org\//i.test(t)) {
     e.preventDefault();
     $("#search-input").value = t;
-    resolveAndOpen(t);
+    resolveAndOpen(t, false);
   }
 });
 
-const looksLikeIdentifier = (s) => /archive\.org\//i.test(s) || /^https?:\/\//i.test(s);
+const isUrl = (s) => /archive\.org\//i.test(s) || /^https?:\/\//i.test(s);
+const isBareIdentifier = (s) => /^[A-Za-z0-9][\w.-]{2,}$/.test(s) && !s.includes(" ");
 
-async function resolveAndOpen(raw) {
+function doSearch(raw) {
+  state.q = raw;
+  state.type = $$("input[name=stype]").find((r) => r.checked).value;
+  state.sort = $("#sort-select").value;
+  state.page = 1;
+  state.view = "search";
+  state.collectionId = null;
+  runSearch();
+}
+
+async function resolveAndOpen(raw, fallbackToSearch) {
   setResultsLoading();
   $("#crumbs").hidden = true;
+  let r;
   try {
-    const r = await api(`/api/resolve?input=${encodeURIComponent(raw)}`);
-    $("#search-input").value = "";
-    if (r.kind === "collection") {
-      $$("input[name=stype]").forEach((x) => (x.checked = x.value === "collection"));
-      openCollection(r.identifier);
-    } else {
-      openItem(r.identifier);
-      toast(`Opened item · ${r.video_files} video file${r.video_files === 1 ? "" : "s"}`);
-    }
-  } catch (e) { showError(e); }
+    r = await api(`/api/resolve?input=${encodeURIComponent(raw)}`);
+  } catch (e) {
+    if (fallbackToSearch) return doSearch(raw);
+    return showError(e);
+  }
+  $("#search-input").value = "";
+  if (r.kind === "collection") {
+    $$("input[name=stype]").forEach((x) => (x.checked = x.value === "collection"));
+    openCollection(r.identifier);
+  } else {
+    openItem(r.identifier);
+    toast(`Opened item · ${r.video_files} video file${r.video_files === 1 ? "" : "s"}`);
+  }
 }
 $("#sort-select").addEventListener("change", () => {
   state.sort = $("#sort-select").value;
@@ -92,6 +103,7 @@ const rerun = () => (state.view === "collection" ? openCollection(state.collecti
 
 function setResultsLoading() {
   $("#browse-empty").hidden = true;
+  $("#results").className = "grid";
   $("#results").innerHTML = '<div class="spinner">Loading…</div>';
   $("#pager").hidden = true;
 }
@@ -183,22 +195,15 @@ async function openItem(identifier, autoModal) {
       $("#browse-empty").hidden = false;
     };
 
-    const CAP = 400;
-    const files = [...it.files].sort((a, b) =>
-      (a.kind === "video" ? 0 : 1) - (b.kind === "video" ? 0 : 1));
-    const shown = files.slice(0, CAP);
-    const rows = shown.map((f) => `
-      <tr>
-        <td>${esc(f.name)}</td>
-        <td>${esc(f.format || "")}</td>
-        <td>${esc(f.source || "")}</td>
-        <td class="num">${f.size ? fmtBytes(f.size) : ""}</td>
-        <td><button class="small ghost" data-file="${esc(f.name)}">⬇</button></td>
-      </tr>`).join("") +
-      (files.length > CAP
-        ? `<tr><td colspan="5" class="muted">…and ${files.length - CAP} more — use “Download this item…” to grab them all.</td></tr>`
-        : "");
+    const CAP = 500;
+    const fmtList = (it.formats || []).map((f) => `
+      <div class="fmt-row">
+        <span class="fmt-name">${esc(f.format)}</span>
+        <span class="fmt-meta">${f.count} file${f.count === 1 ? "" : "s"} · ${fmtBytes(f.size)}${f.source ? " · " + esc(f.source) : ""}</span>
+        <button class="small" data-fmt="${esc(f.format)}">⬇ Download all</button>
+      </div>`).join("");
 
+    $("#results").className = "";
     $("#results").innerHTML = `
       <div class="detail">
         <div class="detail-head">
@@ -210,19 +215,74 @@ async function openItem(identifier, autoModal) {
             <button id="dl-item">⬇ Download this item…</button>
           </div>
         </div>
-        <table class="file-table">
-          <thead><tr><th>File</th><th>Format</th><th>Source</th><th class="num">Size</th><th></th></tr></thead>
-          <tbody>${rows}</tbody>
-        </table>
+        ${fmtList ? `<div class="fmt-list"><h3>Download by format</h3>${fmtList}</div>` : ""}
+        <div class="file-wrap">
+          <table class="file-table">
+            <thead><tr>
+              <th data-sort="name">File</th>
+              <th data-sort="format">Format</th>
+              <th data-sort="source">Source</th>
+              <th data-sort="size" class="num">Size</th>
+              <th class="act"></th>
+            </tr></thead>
+            <tbody id="file-tbody"></tbody>
+          </table>
+        </div>
       </div>`;
     $("#pager").hidden = true;
 
+    const sort = { key: "kind", dir: 1 };
+    const cmp = (a, b) => {
+      let r;
+      if (sort.key === "size") r = (a.size || 0) - (b.size || 0);
+      else if (sort.key === "kind")
+        r = (a.kind === "video" ? 0 : 1) - (b.kind === "video" ? 0 : 1) ||
+            String(a.name).localeCompare(b.name);
+      else r = String(a[sort.key] || "").localeCompare(String(b[sort.key] || ""),
+                                                       undefined, { numeric: true });
+      return r * sort.dir;
+    };
+    const renderRows = () => {
+      const sorted = [...it.files].sort(cmp);
+      const shown = sorted.slice(0, CAP);
+      $("#file-tbody").innerHTML = shown.map((f) => `
+        <tr>
+          <td class="fname">${esc(f.name)}</td>
+          <td>${esc(f.format || "")}</td>
+          <td>${esc(f.source || "")}</td>
+          <td class="num">${f.size ? fmtBytes(f.size) : ""}</td>
+          <td class="act"><button class="small ghost" data-file="${esc(f.name)}">⬇</button></td>
+        </tr>`).join("") +
+        (sorted.length > CAP
+          ? `<tr><td colspan="5" class="muted">…and ${sorted.length - CAP} more — use “Download by format” or “Download this item…”.</td></tr>`
+          : "");
+      $$("#file-tbody [data-file]").forEach((b) =>
+        b.onclick = () => queueJob({
+          kind: "file", target: identifier, title: `${it.title} — ${b.dataset.file}`,
+          options: { files: [b.dataset.file], subtitles: false },
+        }));
+      $$(".file-table th[data-sort]").forEach((th) => {
+        const active = th.dataset.sort === sort.key;
+        th.innerHTML = th.textContent.replace(/[ ▲▼]+$/, "") +
+          (active ? `<span class="arrow"> ${sort.dir > 0 ? "▲" : "▼"}</span>` : "");
+      });
+    };
+    $$(".file-table th[data-sort]").forEach((th) =>
+      th.onclick = () => {
+        const k = th.dataset.sort;
+        if (sort.key === k) sort.dir *= -1;
+        else { sort.key = k; sort.dir = 1; }
+        renderRows();
+      });
+    renderRows();
+
     $("#dl-item").onclick = () =>
       openModal({ kind: "item", target: identifier, title: it.title, formats: it.formats });
-    $$("#results [data-file]").forEach((b) =>
+    $$("#results [data-fmt]").forEach((b) =>
       b.onclick = () => queueJob({
-        kind: "file", target: identifier, title: `${it.title} — ${b.dataset.file}`,
-        options: { files: [b.dataset.file], subtitles: false },
+        kind: "item", target: identifier,
+        title: `${it.title} — ${b.dataset.fmt}`,
+        options: { formats: [b.dataset.fmt], source: "any", mode: "all", subtitles: false },
       }));
 
     if (autoModal)

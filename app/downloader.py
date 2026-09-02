@@ -132,7 +132,7 @@ class Manager:
         meta = archive.metadata(identifier)
         by_name = {f.get("name"): f for f in meta.get("files", [])}
         title = meta.get("metadata", {}).get("title") or identifier
-        self._set_job_title(job_id, f"{title}")
+        self._maybe_set_title(job_id, identifier, title)
         for name in names:
             fl = by_name.get(name, {"name": name, "format": "", "size": 0})
             self._add_task(job_id, identifier, fl, options, collection=None)
@@ -143,7 +143,7 @@ class Manager:
         md = meta.get("metadata", {})
         title = md.get("title") or identifier
         if collection is None:
-            self._set_job_title(job_id, title)
+            self._maybe_set_title(job_id, identifier, title)
         chosen = archive.select_files(meta.get("files", []), options)
         if not chosen:
             raise RuntimeError("no matching files for the selected options")
@@ -381,6 +381,14 @@ class Manager:
                              (status, time.time(), job_id))
         with self._lock:
             self._job_status_cache[job_id] = status
+
+    def _maybe_set_title(self, job_id: int, target: str, title: str) -> None:
+        """Set a title only if the caller didn't already provide a real one."""
+        with db.connect() as conn:
+            row = conn.execute("SELECT title FROM jobs WHERE id=?", (job_id,)).fetchone()
+        current = (row["title"] if row else "") or ""
+        if not current or current == target:
+            self._set_job_title(job_id, title)
 
     def _set_job_title(self, job_id: int, title: str) -> None:
         with db.write() as conn:

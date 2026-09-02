@@ -108,15 +108,29 @@ main { max-width: 1180px; margin: 0 auto; padding: 20px; }
 .pager { display: flex; align-items: center; justify-content: center; gap: 14px; margin: 22px 0; }
 
 /* item detail */
-.detail { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; margin-bottom: 16px; }
+.detail { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; margin-bottom: 16px; overflow: hidden; }
 .detail-head { display: flex; gap: 16px; flex-wrap: wrap; }
-.detail-head img { width: 200px; border-radius: 8px; border: 1px solid var(--border); }
-.detail-head .info { flex: 1 1 300px; }
-.detail-head .info p { color: var(--muted); max-height: 6.5em; overflow: auto; }
-.file-table { width: 100%; border-collapse: collapse; margin-top: 12px; }
-.file-table th, .file-table td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--border); font-size: 13px; }
-.file-table th { color: var(--muted); font-weight: 500; }
-.file-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
+.detail-head img { width: 200px; max-width: 40%; border-radius: 8px; border: 1px solid var(--border); align-self: flex-start; }
+.detail-head .info { flex: 1 1 300px; min-width: 0; }
+.detail-head .info p { color: var(--muted); max-height: 6.5em; overflow: auto; overflow-wrap: anywhere; }
+
+.fmt-list { margin-top: 16px; border-top: 1px solid var(--border); padding-top: 12px; }
+.fmt-list h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); font-weight: 600; margin-bottom: 8px; }
+.fmt-row { display: flex; align-items: center; gap: 10px 14px; padding: 6px 0; flex-wrap: wrap; }
+.fmt-row .fmt-name { font-weight: 600; min-width: 130px; }
+.fmt-row .fmt-meta { flex: 1 1 auto; color: var(--muted); font-size: 13px; }
+
+.file-wrap { margin-top: 16px; border-top: 1px solid var(--border); overflow-x: auto; }
+.file-table { width: 100%; min-width: 520px; border-collapse: collapse; }
+.file-table th, .file-table td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--border); font-size: 13px; vertical-align: top; }
+.file-table th { color: var(--muted); font-weight: 500; position: sticky; top: 0; background: var(--bg-card); }
+.file-table th[data-sort] { cursor: pointer; user-select: none; white-space: nowrap; }
+.file-table th[data-sort]:hover { color: var(--text); }
+.file-table th .arrow { opacity: .6; font-size: 10px; }
+.file-table td.num, .file-table th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.file-table td.fname { overflow-wrap: anywhere; }
+.file-table td.act { text-align: right; }
+.file-table td.act button { white-space: nowrap; }
 
 /* queue */
 .queue-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
