@@ -8,17 +8,15 @@ PORT="${PORT:-8000}"
 
 umask "$UMASK"
 
-# Align the 'abc' user/group with the host ids Unraid passes in.
-if [ "$(id -u abc 2>/dev/null)" != "$PUID" ]; then
-  usermod -o -u "$PUID" abc 2>/dev/null || true
+# Align the 'abc' user/group with the host ids Unraid (or compose) passes in.
+if ! getent group "$PGID" >/dev/null 2>&1; then
+  groupadd -o -g "$PGID" abcgrp 2>/dev/null || true
 fi
-if [ "$(id -g abc 2>/dev/null)" != "$PGID" ]; then
-  groupmod -o -g "$PGID" abc 2>/dev/null || true
-fi
+usermod -o -u "$PUID" -g "$PGID" abc 2>/dev/null || true
 
 mkdir -p "${CONFIG_DIR:-/config}" "${DOWNLOAD_DIR:-/downloads}"
-chown abc:abc "${CONFIG_DIR:-/config}" 2>/dev/null || true
-chown abc:abc "${DOWNLOAD_DIR:-/downloads}" 2>/dev/null || true
+chown "$PUID:$PGID" "${CONFIG_DIR:-/config}" 2>/dev/null || true
+chown "$PUID:$PGID" "${DOWNLOAD_DIR:-/downloads}" 2>/dev/null || true
 
 echo "Internet Archive Video Downloader"
 echo "  user  : abc ($PUID:$PGID)"
