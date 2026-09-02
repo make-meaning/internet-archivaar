@@ -1,4 +1,4 @@
-# Internet Archive Video Downloader
+# Internet Archivaar
 
 A self-hosted web GUI for browsing video collections on [archive.org](https://archive.org)
 and downloading individual videos or entire collections — with format selection, a job
@@ -11,8 +11,13 @@ with an Unraid Community Applications template.
 
 - **Browse** – search archive.org for *collections* or *individual videos*, page through
   results, open a collection to see its items, open an item to see every file.
+- **Users** – open an archive.org uploader's profile with the *Users* search mode
+  (type `skinnyv` or `@skinnyv`) or by pasting a profile link
+  (`https://archive.org/details/@skinnyv`). Browse their **Uploads**, **Collections**,
+  **Favorites** and **Reviews** with sort + paging, open any item or collection, or
+  queue *⬇ Download all uploads* in one go (with the same format options as a collection).
 - **Paste a link** – drop an `archive.org/details/…` URL (or bare identifier) into the
-  search box and it jumps straight to that collection or item. Example:
+  search box and it jumps straight to that collection, item or user. Example:
   `https://archive.org/details/WildlifeDocumentaries/` — an item bundling ~1,165 videos.
 - **Download** – a single file, everything in one format, a whole item, or an entire
   collection.
@@ -30,6 +35,8 @@ with an Unraid Community Applications template.
   - originals only / derivatives only / any
   - also grab subtitles / captions and/or thumbnails
   - optional output subfolder override; collections can cap the number of items
+- **Recent** – your recent searches, opened collections, items and users show as
+  one-click chips on the Browse landing view. Clear the whole history from Settings.
 - **Queue** – multiple concurrent jobs, live progress bars, per-file status,
   pause / resume / cancel / retry, and remove.
 - **Resumable** – interrupted files continue via HTTP range requests; the queue survives
@@ -46,12 +53,12 @@ Files are saved as:
 ## Run with Docker
 
 ```bash
-docker run -d --name ia-video-downloader \
+docker run -d --name internet-archivaar \
   -p 8000:8000 \
   -e PUID=1000 -e PGID=1000 \
   -v /path/to/appdata:/config \
   -v /path/to/media/archive.org:/downloads \
-  ghcr.io/OWNER/ia-video-downloader:latest
+  ghcr.io/OWNER/internet-archivaar:latest
 ```
 
 Open <http://localhost:8000>.
@@ -64,12 +71,12 @@ docker compose up -d --build
 
 ## Unraid
 
-1. Build/push the image (or use the published one) and edit `unraid/ia-video-downloader.xml`,
+1. Build/push the image (or use the published one) and edit `unraid/internet-archivaar.xml`,
    replacing `OWNER` with your GitHub user / registry.
 2. In Unraid: **Docker → Add Container → Template**, point it at the XML (or drop it in
    `/boot/config/plugins/dockerMan/templates-user/`).
 3. Set the **Downloads** path to a share (e.g. `/mnt/user/media/archive.org`) and
-   **Config** to `/mnt/user/appdata/ia-video-downloader`.
+   **Config** to `/mnt/user/appdata/internet-archivaar`.
 4. Apply, then open the WebUI.
 
 ## Configuration

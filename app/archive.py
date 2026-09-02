@@ -1,6 +1,7 @@
 """Thin client for the archive.org public APIs."""
 from __future__ import annotations
 
+import json
 import os
 from typing import Iterator
 from urllib.parse import quote
@@ -174,6 +175,132 @@ def select_files(files: list[dict], options: dict) -> list[dict]:
         videos = [max(videos, key=lambda f: int(f.get("size") or 0))]
 
     return videos + extras
+
+
+# ------------------------------------------------------------------ accounts
+# archive.org user profiles live at /details/@<screenname>. The public account
+# page is driven by this "page_production" search service — the same endpoint
+# the site itself calls — which returns a user's uploads, collections,
+# favorites and reviews in one shot, with per-section totals and paging.
+ACCOUNT_API = "/services/search/beta/page_production/"
+ACCOUNT_SECTIONS = ("uploads", "collections", "favorites", "reviews")
+
+
+def normalize_handle(handle: str) -> str:
+    return (handle or "").strip().lstrip("@").strip()
+
+
+def _account_page(handle: str, sections: tuple[str, ...], page: int = 1,
+                  rows: int = 100, sort: str = "publicdate:desc") -> dict:
+    handle = normalize_handle(handle)
+    if not handle:
+        raise ValueError("empty account handle")
+    params: list[tuple[str, str]] = [
+        ("page_type", "account_details"),
+        ("page_target", f"@{handle}"),
+        ("page_elements", json.dumps(list(sections))),
+        ("hits_per_page", str(rows)),
+        ("page", str(page)),
+        ("aggregations", "false"),
+    ]
+    if sort:
+        params.append(("sort", sort))
+    last_exc: Exception | None = None
+    for _ in range(2):                       # the service is occasionally flaky
+        with _client() as c:
+            r = c.get(ACCOUNT_API, params=params)
+            r.raise_for_status()
+            data = r.json()
+        resp = data.get("response") or {}
+        if (resp.get("header") or {}).get("succeeded") and resp.get("body"):
+            return resp
+        last_exc = httpx.HTTPError(
+            f"archive.org account lookup failed for @{handle}")
+    raise last_exc  # type: ignore[misc]
+
+
+def _hit_to_doc(hit: dict) -> dict:
+    f = hit.get("fields", {}) or {}
+    pub = f.get("publicdate") or f.get("addeddate") or ""
+    return {
+        "identifier": f.get("identifier"),
+        "title": f.get("title") or f.get("identifier"),
+        "mediatype": f.get("mediatype"),
+        "downloads": f.get("downloads") or 0,
+        "year": f.get("year") or (str(pub)[:4] if pub else ""),
+        "publicdate": pub,
+        "item_size": f.get("item_size") or f.get("collection_size") or 0,
+        "files_count": f.get("files_count") or f.get("item_count") or 0,
+    }
+
+
+def _section_hits(resp: dict, section: str) -> dict:
+    pe = ((resp.get("body") or {}).get("page_elements") or {})
+    sect = pe.get(section) or {}
+    hits = sect.get("hits") if isinstance(sect, dict) else None
+    return hits if isinstance(hits, dict) else {}
+
+
+def account_profile(handle: str) -> dict:
+    """Screenname, blurb and per-section counts for a user profile."""
+    handle = normalize_handle(handle)
+    resp = _account_page(handle, ACCOUNT_SECTIONS, page=1, rows=1)
+    extra = ((resp.get("body") or {}).get("account_extra_info") or {})
+    ad = extra.get("account_details", {}) or {}
+    uim = extra.get("user_item_metadata", {}) or {}
+    counts = {s: (_section_hits(resp, s).get("total") or 0)
+              for s in ACCOUNT_SECTIONS}
+    return {
+        "identifier": f"@{handle}",
+        "handle": handle,
+        "screenname": ad.get("screenname") or handle,
+        "title": uim.get("title") or ad.get("screenname") or handle,
+        "description": uim.get("description"),
+        "member_since": ad.get("user_since"),
+        "counts": counts,
+    }
+
+
+def account_section(handle: str, section: str, page: int = 1, rows: int = 48,
+                    sort: str = "publicdate:desc") -> dict:
+    if section not in ACCOUNT_SECTIONS:
+        raise ValueError(f"unknown account section: {section}")
+    resp = _account_page(handle, (section,), page=page, rows=rows, sort=sort)
+    hits = _section_hits(resp, section)
+    return {
+        "total": hits.get("total") or 0,
+        "page": page,
+        "rows": rows,
+        "docs": [_hit_to_doc(h) for h in hits.get("hits", [])],
+    }
+
+
+def iter_account_uploads(handle: str, limit: int = 0,
+                         mediatype: str = "movies") -> Iterator[str]:
+    """Page through a user's uploads, yielding item identifiers."""
+    handle = normalize_handle(handle)
+    page, seen = 1, 0
+    while True:
+        resp = _account_page(handle, ("uploads",), page=page, rows=100,
+                             sort="publicdate:asc")
+        hits = _section_hits(resp, "uploads")
+        rows = hits.get("hits", [])
+        if not rows:
+            return
+        for h in rows:
+            f = h.get("fields", {}) or {}
+            ident = f.get("identifier")
+            if not ident:
+                continue
+            if mediatype and f.get("mediatype") != mediatype:
+                continue
+            yield ident
+            seen += 1
+            if limit and seen >= limit:
+                return
+        if page * 100 >= (hits.get("total") or 0):
+            return
+        page += 1
 
 
 def item_formats(files: list[dict]) -> list[dict]:

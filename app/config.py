@@ -10,4 +10,4 @@ PORT = int(os.environ.get("PORT", "8000"))
 DEFAULT_CONCURRENCY = int(os.environ.get("CONCURRENCY", "3"))
 DEFAULT_MAX_COLLECTION_ITEMS = int(os.environ.get("MAX_COLLECTION_ITEMS", "0"))  # 0 = unlimited
 
-USER_AGENT = "unraid-internet-archive/1.0 (+https://github.com/)"
+USER_AGENT = "internet-archivaar/1.0 (+https://github.com/)"

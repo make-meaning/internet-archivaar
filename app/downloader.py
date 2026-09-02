@@ -61,7 +61,7 @@ class Manager:
                 "WHERE status IN ('queued','running','resolving')"
             ).fetchall()
         for row in rows:
-            if row["kind"] == "collection":
+            if row["kind"] in ("collection", "account"):
                 # re-resolve to pick up where it left off (tasks are deduped)
                 self._start_resolver(row["id"], row["kind"], row["target"],
                                      json.loads(row["options"]))
@@ -86,7 +86,7 @@ class Manager:
     # ------------------------------------------------------------------ jobs
     def create_job(self, kind: str, target: str, options: dict,
                    title: str | None = None) -> int:
-        if kind not in ("file", "item", "collection"):
+        if kind not in ("file", "item", "collection", "account"):
             raise ValueError("bad kind")
         now = time.time()
         with db.write() as conn:
@@ -117,6 +117,8 @@ class Manager:
                 self._resolve_item(job_id, target, options, collection=None)
             elif kind == "collection":
                 self._resolve_collection(job_id, target, options)
+            elif kind == "account":
+                self._resolve_account(job_id, target, options)
             self._set_job_status(job_id, "queued", clear_error=True)
         except Exception as exc:  # noqa: BLE001
             traceback.print_exc()
@@ -167,6 +169,25 @@ class Manager:
             time.sleep(0.2)
         if count == 0:
             raise RuntimeError("collection has no video items")
+
+    def _resolve_account(self, job_id: int, handle: str, options: dict) -> None:
+        limit = int(options.get("max_items", DEFAULT_MAX_COLLECTION_ITEMS) or 0)
+        handle = archive.normalize_handle(handle)
+        folder = f"@{handle}"
+        count = 0
+        for ident in archive.iter_account_uploads(handle, limit=limit):
+            if self._job_status(job_id) in ("cancelled", "paused"):
+                return
+            try:
+                self._resolve_item(job_id, ident, options, collection=folder)
+            except Exception as exc:  # noqa: BLE001 -- skip broken items, keep going
+                print(f"[resolve] {ident}: {exc}")
+            count += 1
+            self._set_job_title(job_id, f"@{handle} uploads  ({count} items)")
+            self._wake.set()
+            time.sleep(0.2)
+        if count == 0:
+            raise RuntimeError("this account has no video uploads")
 
     def _add_task(self, job_id: int, identifier: str, fl: dict, options: dict,
                   collection: str | None) -> None:

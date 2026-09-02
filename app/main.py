@@ -28,7 +28,7 @@ async def lifespan(app: FastAPI):
     manager.shutdown()
 
 
-app = FastAPI(title="Internet Archive Video Downloader", lifespan=lifespan,
+app = FastAPI(title="Internet Archivaar", lifespan=lifespan,
               docs_url="/api/docs", openapi_url="/api/openapi.json")
 
 
@@ -45,7 +45,7 @@ def api_search(q: str = "", type: str = Query("collection", pattern="^(collectio
 
 
 _IA_URL = re.compile(
-    r"archive\.org/(?:details|download|metadata|embed|search)/([^/?#\s]+)", re.I)
+    r"archive\.org/(?:details|download|metadata|embed|search)/(@?[^/?#\s]+)", re.I)
 
 
 def extract_identifier(text: str) -> str | None:
@@ -53,7 +53,7 @@ def extract_identifier(text: str) -> str | None:
     m = _IA_URL.search(text)
     if m:
         return unquote(m.group(1))
-    # a bare identifier: no scheme, no spaces, no slashes
+    # a bare identifier or @screenname: no scheme, no spaces, no slashes
     if text and not text.startswith("http") and "/" not in text and " " not in text:
         return text
     return None
@@ -61,10 +61,18 @@ def extract_identifier(text: str) -> str | None:
 
 @app.get("/api/resolve")
 def api_resolve(input: str):
-    """Turn a pasted archive.org URL (or bare identifier) into a routing target."""
+    """Turn a pasted archive.org URL, identifier or @screenname into a target."""
     ident = extract_identifier(input)
     if not ident:
-        raise HTTPException(400, "No archive.org identifier or URL found in that input.")
+        raise HTTPException(400, "No archive.org identifier, URL or @user found in that input.")
+
+    if ident.startswith("@"):
+        try:
+            prof = archive.account_profile(ident)
+        except httpx.HTTPError as exc:
+            raise HTTPException(404, f"No archive.org user '{ident}'.") from exc
+        return {**prof, "mediatype": "account", "kind": "account"}
+
     try:
         meta = archive.metadata(ident)
     except httpx.HTTPError as exc:
@@ -73,6 +81,9 @@ def api_resolve(input: str):
     if not md:
         raise HTTPException(404, f"Nothing found for '{ident}'.")
     mt = md.get("mediatype")
+    if mt == "account":
+        prof = archive.account_profile(ident)
+        return {**prof, "mediatype": "account", "kind": "account"}
     n_video = sum(1 for f in meta.get("files", [])
                   if archive.classify_file(f) == "video")
     return {
@@ -82,6 +93,29 @@ def api_resolve(input: str):
         "kind": "collection" if mt == "collection" else "item",
         "video_files": n_video,
     }
+
+
+# --------------------------------------------------------------------- users
+@app.get("/api/account/{handle}")
+def api_account(handle: str):
+    try:
+        return archive.account_profile(handle)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(404, f"No archive.org user '@{archive.normalize_handle(handle)}'.") from exc
+
+
+@app.get("/api/account/{handle}/{section}")
+def api_account_section(handle: str, section: str, page: int = 1,
+                        sort: str = "publicdate:desc"):
+    try:
+        return archive.account_section(handle, section, page=max(1, page),
+                                       rows=48, sort=sort)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(502, f"archive.org error: {exc}") from exc
 
 
 @app.get("/api/collection/{cid}")
@@ -140,8 +174,8 @@ def api_thumb(identifier: str):
 
 # ---------------------------------------------------------------------- jobs
 class JobRequest(BaseModel):
-    kind: str                       # file | item | collection
-    target: str                     # identifier or collection id
+    kind: str                       # file | item | collection | account
+    target: str                     # identifier, collection id or @screenname
     title: str | None = None
     options: dict = {}
 
@@ -201,6 +235,7 @@ def api_get_settings():
         "disk_total": usage.total,
         "disk_free": usage.free,
         "disk_used": usage.used,
+        "history_count": db.history_count(),
     }
 
 
@@ -212,6 +247,36 @@ def api_set_settings(s: Settings):
     if s.archive_cookies is not None:
         db.set_setting("archive_cookies", s.archive_cookies.strip())
     return api_get_settings()
+
+
+# ------------------------------------------------------------------- history
+class HistoryEntry(BaseModel):
+    kind: str                       # search | collection | item | account
+    key: str                        # dedupe key within a kind
+    label: str                      # text shown in the UI
+    data: dict = {}                 # how to replay the entry
+
+
+@app.get("/api/history")
+def api_history(limit: int = 50):
+    return {"history": db.list_history(min(200, max(1, limit)))}
+
+
+@app.post("/api/history")
+def api_add_history(e: HistoryEntry):
+    if e.kind not in ("search", "collection", "item", "account"):
+        raise HTTPException(400, "unknown history kind")
+    key, label = e.key.strip(), e.label.strip()
+    if not key or not label:
+        raise HTTPException(400, "empty history entry")
+    db.add_history(e.kind, key[:400], label[:400], e.data or {})
+    return {"ok": True}
+
+
+@app.delete("/api/history")
+def api_clear_history():
+    db.clear_history()
+    return {"ok": True}
 
 
 # ------------------------------------------------------------------- static

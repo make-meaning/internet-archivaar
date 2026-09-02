@@ -35,16 +35,23 @@ function showTab(name) {
   $$(".tab").forEach((s) => s.classList.toggle("active", s.id === "tab-" + name));
   if (name === "queue") refreshJobs();
   if (name === "settings") loadSettings();
+  if (name === "browse") loadRecent();
 }
 
 /* --------------------------------------------------------------- browsing */
 const state = { view: "search", q: "", type: "collection", sort: "",
-  page: 1, total: 0, collectionId: null };
+  page: 1, total: 0, collectionId: null,
+  accountId: null, accountSection: "uploads" };
 
 $("#search-form").addEventListener("submit", (e) => {
   e.preventDefault();
   const raw = $("#search-input").value.trim();
-  if (!raw) { toast("Enter a search term or paste an archive.org link"); return; }
+  if (!raw) { toast("Enter a search term, an @user, or paste an archive.org link"); return; }
+  const stype = $$("input[name=stype]").find((r) => r.checked).value;
+  if (raw.startsWith("@") || (stype === "account" && isHandle(raw))) {
+    resolveAndOpen(raw.startsWith("@") ? raw : "@" + raw, stype !== "account");
+    return;
+  }
   if (isUrl(raw)) { resolveAndOpen(raw, false); return; }
   if (isBareIdentifier(raw)) { resolveAndOpen(raw, true); return; }
   doSearch(raw);
@@ -62,14 +69,17 @@ $("#search-input").addEventListener("paste", (e) => {
 
 const isUrl = (s) => /archive\.org\//i.test(s) || /^https?:\/\//i.test(s);
 const isBareIdentifier = (s) => /^[A-Za-z0-9][\w.-]{2,}$/.test(s) && !s.includes(" ");
+const isHandle = (s) => /^@?[A-Za-z0-9][\w.-]*$/.test(s) && !s.includes(" ");
 
 function doSearch(raw) {
   state.q = raw;
   state.type = $$("input[name=stype]").find((r) => r.checked).value;
+  if (state.type === "account") state.type = "video";   // free text ≠ a handle
   state.sort = $("#sort-select").value;
   state.page = 1;
   state.view = "search";
   state.collectionId = null;
+  state.accountId = null;
   runSearch();
 }
 
@@ -84,7 +94,9 @@ async function resolveAndOpen(raw, fallbackToSearch) {
     return showError(e);
   }
   $("#search-input").value = "";
-  if (r.kind === "collection") {
+  if (r.kind === "account") {
+    openAccount(r.identifier, r);
+  } else if (r.kind === "collection") {
     $$("input[name=stype]").forEach((x) => (x.checked = x.value === "collection"));
     openCollection(r.identifier);
   } else {
@@ -93,16 +105,21 @@ async function resolveAndOpen(raw, fallbackToSearch) {
   }
 }
 $("#sort-select").addEventListener("change", () => {
+  if (state.view === "account") return;   // the user view has its own sort control
   state.sort = $("#sort-select").value;
   state.page = 1;
   state.view === "collection" ? openCollection(state.collectionId, true) : runSearch();
 });
 $("#prev-page").addEventListener("click", () => { if (state.page > 1) { state.page--; rerun(); } });
 $("#next-page").addEventListener("click", () => { state.page++; rerun(); });
-const rerun = () => (state.view === "collection" ? openCollection(state.collectionId, true) : runSearch());
+const rerun = () =>
+  state.view === "account" ? renderAccountSection()
+    : state.view === "collection" ? openCollection(state.collectionId, true)
+      : runSearch();
 
 function setResultsLoading() {
   $("#browse-empty").hidden = true;
+  $("#recent").hidden = true;
   $("#results").className = "grid";
   $("#results").innerHTML = '<div class="spinner">Loading…</div>';
   $("#pager").hidden = true;
@@ -117,10 +134,19 @@ async function runSearch() {
     state.total = res.total;
     renderResults(res.docs, state.type === "collection" ? "collection" : "video");
     updatePager(res.total);
+    if (state.page === 1)
+      recordHistory({
+        kind: "search", key: `${state.type}|${state.q.toLowerCase()}`,
+        label: state.q,
+        data: { q: state.q, type: state.type, sort: state.sort },
+      });
   } catch (e) { showError(e); }
 }
 
 async function openCollection(cid, keepPage) {
+  const fromAccount = (state.view === "account" || state.view === "collection")
+    ? state.accountId : null;
+  if (!fromAccount) state.accountId = null;
   state.view = "collection";
   state.collectionId = cid;
   if (!keepPage) state.page = 1;
@@ -129,20 +155,161 @@ async function openCollection(cid, keepPage) {
     const res = await api(`/api/collection/${encodeURIComponent(cid)}?page=${state.page}&sort=${encodeURIComponent(state.sort)}`);
     const title = (res.collection && res.collection.title) || cid;
     $("#crumbs").hidden = false;
+    const back = fromAccount
+      ? `<a id="back-search">← ${esc(fromAccount)}</a>`
+      : `<a id="back-search">← Search</a>`;
     $("#crumbs").innerHTML =
-      `<a id="back-search">← Search</a> &nbsp;/&nbsp; <strong>${esc(title)}</strong> ` +
+      `${back} &nbsp;/&nbsp; <strong>${esc(title)}</strong> ` +
       `<button class="small" id="dl-collection">⬇ Download entire collection</button>`;
-    $("#back-search").onclick = () => { state.view = "search"; runSearch(); };
+    $("#back-search").onclick = () =>
+      fromAccount ? openAccount(fromAccount) : (state.view = "search", runSearch());
     $("#dl-collection").onclick = () =>
       openModal({ kind: "collection", target: cid, title, formats: null });
     state.total = res.total;
     renderResults(res.docs, "video");
     updatePager(res.total);
+    recordHistory({ kind: "collection", key: cid, label: title, data: { cid } });
   } catch (e) { showError(e); }
 }
 
-function renderResults(docs, kind) {
-  const wrap = $("#results");
+/* --------------------------------------------------------------- users */
+const ACCOUNT_SECTIONS = [
+  { key: "uploads", label: "Uploads", kind: "video" },
+  { key: "collections", label: "Collections", kind: "collection" },
+  { key: "favorites", label: "Favorites", kind: "video" },
+  { key: "reviews", label: "Reviews", kind: "video" },
+];
+const ACCOUNT_SORTS = [
+  ["publicdate:desc", "Newest"],
+  ["publicdate:asc", "Oldest"],
+  ["downloads:desc", "Most downloaded"],
+  ["titleSorter:asc", "Title A–Z"],
+];
+
+async function openAccount(handle, prof) {
+  handle = handle.startsWith("@") ? handle : "@" + handle;
+  const fresh = handle !== state.accountId;
+  state.view = "account";
+  state.accountId = handle;
+  if (fresh) { state.accountSection = "uploads"; state.accountSort = "publicdate:desc"; }
+  state.page = 1;
+  state.collectionId = null;
+  setResultsLoading();
+  $("#crumbs").hidden = true;
+  try {
+    if (!prof) prof = await api(`/api/account/${encodeURIComponent(handle)}`);
+    state.accountProfile = prof;
+    recordHistory({ kind: "account", key: handle,
+      label: prof.title || handle, data: { handle } });
+    renderAccountShell(prof);
+    await renderAccountSection();
+  } catch (e) { showError(e); }
+}
+
+function renderAccountShell(prof) {
+  const counts = prof.counts || {};
+  let tabs = ACCOUNT_SECTIONS.filter((s) => (counts[s.key] || 0) > 0);
+  if (!tabs.length) tabs = [ACCOUNT_SECTIONS[0]];   // nothing public — show empty Uploads
+  if (!tabs.find((s) => s.key === state.accountSection))
+    state.accountSection = tabs[0].key;
+
+  $("#crumbs").hidden = false;
+  $("#crumbs").innerHTML =
+    `<a id="back-search">← Search</a> &nbsp;/&nbsp; <strong>${esc(prof.title || prof.identifier)}</strong>`;
+  $("#back-search").onclick = () => {
+    state.view = "search"; state.accountId = null;
+    if (state.q) return runSearch();
+    $("#crumbs").hidden = true;
+    $("#results").innerHTML = ""; $("#results").className = "grid";
+    $("#browse-empty").hidden = false;
+    loadRecent();
+  };
+
+  const meta = [
+    prof.identifier,
+    prof.member_since ? "member since " + String(prof.member_since).slice(0, 4) : "",
+  ].filter(Boolean).map(esc).join(" · ");
+
+  $("#results").className = "";
+  $("#results").innerHTML = `
+    <div class="detail">
+      <div class="detail-head">
+        <img src="/api/thumb/${encodeURIComponent(prof.identifier)}" alt="" onerror="this.style.display='none'">
+        <div class="info">
+          <h2>${esc(prof.title || prof.identifier)}</h2>
+          <div class="meta muted">${meta}</div>
+          <p>${esc(stripHtml(prof.description || "")).slice(0, 600)}</p>
+          ${(counts.uploads || 0) > 0
+            ? `<button id="dl-account">⬇ Download all uploads…</button>` : ""}
+        </div>
+      </div>
+      <div class="acct-tabs">
+        ${tabs.map((s) => `<button class="acct-tab" data-sec="${s.key}">${s.label}
+          <span class="acct-tab-n">${(counts[s.key] || 0).toLocaleString()}</span></button>`).join("")}
+      </div>
+      <div class="grp-controls">
+        <h3 id="acct-count" class="muted"></h3>
+        <div class="grp-controls-r">
+          <label>Sort
+            <select id="acct-sort">
+              ${ACCOUNT_SORTS.map(([v, l]) =>
+                `<option value="${v}"${v === state.accountSort ? " selected" : ""}>${l}</option>`).join("")}
+            </select>
+          </label>
+        </div>
+      </div>
+      <div id="acct-grid" class="grid"></div>
+      <div id="acct-pager" class="pager" hidden></div>
+    </div>`;
+  $("#pager").hidden = true;
+
+  if ((counts.uploads || 0) > 0)
+    $("#dl-account").onclick = () => openModal({
+      kind: "account", target: prof.identifier,
+      title: (prof.title || prof.identifier) + " — uploads", formats: null,
+    });
+  $$("#results .acct-tab").forEach((b) => b.onclick = () => {
+    if (b.dataset.sec === state.accountSection) return;
+    state.accountSection = b.dataset.sec;
+    state.page = 1;
+    renderAccountSection();
+  });
+  $("#acct-sort").onchange = () => {
+    state.accountSort = $("#acct-sort").value;
+    state.page = 1;
+    renderAccountSection();
+  };
+}
+
+async function renderAccountSection() {
+  const grid = $("#acct-grid");
+  if (!grid) return openAccount(state.accountId, state.accountProfile);
+  const meta = ACCOUNT_SECTIONS.find((s) => s.key === state.accountSection);
+  $$("#results .acct-tab").forEach((b) =>
+    b.classList.toggle("active", b.dataset.sec === state.accountSection));
+  grid.innerHTML = '<div class="spinner">Loading…</div>';
+  try {
+    const res = await api(`/api/account/${encodeURIComponent(state.accountId)}/${state.accountSection}` +
+      `?page=${state.page}&sort=${encodeURIComponent(state.accountSort)}`);
+    renderResults(res.docs, meta.kind, grid);
+    $("#acct-count").textContent =
+      `${res.total.toLocaleString()} ${meta.label.toLowerCase()}`;
+    const pages = Math.max(1, Math.ceil(res.total / 48));
+    const pg = $("#acct-pager");
+    pg.hidden = pages <= 1;
+    pg.innerHTML =
+      `<button id="acct-prev"${state.page <= 1 ? " disabled" : ""}>← Prev</button>` +
+      `<span>Page ${state.page} of ${pages}</span>` +
+      `<button id="acct-next"${state.page >= pages ? " disabled" : ""}>Next →</button>`;
+    $("#acct-prev").onclick = () => { if (state.page > 1) { state.page--; renderAccountSection(); } };
+    $("#acct-next").onclick = () => { state.page++; renderAccountSection(); };
+    grid.scrollIntoView({ block: "nearest" });
+  } catch (e) {
+    grid.innerHTML = `<p class="empty">⚠ ${esc(e.message)}</p>`;
+  }
+}
+
+function renderResults(docs, kind, wrap = $("#results")) {
   if (!docs.length) {
     wrap.innerHTML = '<p class="empty">No results.</p>';
     return;
@@ -170,29 +337,39 @@ function renderResults(docs, kind) {
       actions.append(open, dl);
     } else {
       const open = mkBtn("Open", () => openItem(d.identifier));
+      const play = mkBtn("▶", () =>
+        openPlayer({ identifier: d.identifier, title: d.title || d.identifier }));
+      play.classList.add("ghost");
       const dl = mkBtn("⬇", () => openItem(d.identifier, true));
       dl.classList.add("ghost");
-      actions.append(open, dl);
+      actions.append(open, play, dl);
     }
     wrap.append(el);
   }
 }
 
 async function openItem(identifier, autoModal) {
+  if (String(identifier).startsWith("@")) return openAccount(identifier);
   setResultsLoading();
   try {
     const it = await api(`/api/item/${encodeURIComponent(identifier)}`);
+    recordHistory({ kind: "item", key: identifier, label: it.title, data: { identifier } });
     $("#crumbs").hidden = false;
     const inColl = state.view === "collection" && state.collectionId;
+    const inAccount = !inColl && state.accountId;
     const hasResults = state.view === "search" && state.q;
-    const backLabel = inColl ? "← Collection" : hasResults ? "← Results" : "← Browse";
+    const backLabel = inColl ? "← Collection"
+      : inAccount ? `← ${state.accountId}`
+        : hasResults ? "← Results" : "← Browse";
     $("#crumbs").innerHTML = `<a id="back-x">${backLabel}</a> &nbsp;/&nbsp; <strong>${esc(it.title)}</strong>`;
     $("#back-x").onclick = () => {
       if (inColl) return openCollection(state.collectionId, true);
+      if (inAccount) return openAccount(state.accountId, state.accountProfile);
       if (hasResults) return runSearch();
       $("#crumbs").hidden = true;
       $("#results").innerHTML = "";
       $("#browse-empty").hidden = false;
+      loadRecent();
     };
 
     const CAP = 800;
@@ -215,6 +392,7 @@ async function openItem(identifier, autoModal) {
             <h2>${esc(it.title)}</h2>
             <div class="meta muted">${[it.creator, it.year].filter(Boolean).map(esc).join(" · ")}</div>
             <p>${esc(stripHtml(it.description || "")).slice(0, 600)}</p>
+            <button id="play-item" class="ghost">▶ Play</button>
             <button id="dl-item">⬇ Download this item…</button>
           </div>
         </div>
@@ -256,6 +434,7 @@ async function openItem(identifier, autoModal) {
           <summary>
             <span class="grp-title">${esc(grp.title)}</span>
             <span class="grp-meta">${grp.formats.length} format${grp.formats.length === 1 ? "" : "s"} · ${fmtBytes(grp.bytes)}</span>
+            <button class="small ghost grp-play" data-grp="${i}" title="Play in browser">▶</button>
             <button class="small grp-dl" data-grp="${i}" title="Download every format of this video">⬇ All</button>
           </summary>
           <table class="grp-files">
@@ -265,7 +444,7 @@ async function openItem(identifier, autoModal) {
                 <td class="muted">${esc(f.source || "")}</td>
                 <td class="muted fname">${esc(f.name.split("/").pop())}</td>
                 <td class="num">${f.size ? fmtBytes(f.size) : ""}</td>
-                <td class="act"><button class="small ghost" data-file="${esc(f.name)}">⬇</button></td>
+                <td class="act">${f.kind === "video" ? `<button class="small ghost" data-play="${esc(f.name)}" title="Play in browser">▶</button> ` : ""}<button class="small ghost" data-file="${esc(f.name)}">⬇</button></td>
               </tr>`).join("")}
           </table>
         </details>`).join("") +
@@ -273,6 +452,20 @@ async function openItem(identifier, autoModal) {
           ? `<p class="muted grp-more">…and ${(g.length - CAP).toLocaleString()} more videos — use “Download by format” or “Download this item…” to grab them all.</p>`
           : "");
 
+      $$("#grp-list .grp-play").forEach((b) => b.onclick = (e) => {
+        e.preventDefault();
+        const grp = shown[+b.dataset.grp];
+        const f = grp.files.find((x) => x.kind === "video");
+        openPlayer({ identifier, title: `${it.title} — ${grp.title}`, file: f });
+      });
+      $$("#grp-list [data-play]").forEach((b) => b.onclick = (e) => {
+        e.preventDefault();
+        const name = b.dataset.play;
+        openPlayer({
+          identifier, title: `${it.title} — ${name.split("/").pop()}`,
+          file: { name },
+        });
+      });
       $$("#grp-list .grp-dl").forEach((b) => b.onclick = (e) => {
         e.preventDefault();
         const grp = shown[+b.dataset.grp];
@@ -298,6 +491,8 @@ async function openItem(identifier, autoModal) {
     };
     renderGroups();
 
+    $("#play-item").onclick = () =>
+      openPlayer({ identifier, title: it.title });
     $("#dl-item").onclick = () =>
       openModal({ kind: "item", target: identifier, title: it.title, formats: it.formats });
     $$("#results [data-fmt]").forEach((b) =>
@@ -358,12 +553,14 @@ function showError(e) {
 
 /* --------------------------------------------------------------- modal */
 let modalCtx = null;
+const isBulkKind = (k) => k === "collection" || k === "account";
 function openModal(ctx) {
   modalCtx = ctx;
   $("#modal-title").textContent = "Download options";
   $("#modal-sub").textContent =
-    (ctx.kind === "collection" ? "Entire collection: " : "Item: ") + ctx.title;
-  $("#opt-maxitems-row").hidden = ctx.kind !== "collection";
+    ({ collection: "Entire collection: ", account: "All uploads by: " }[ctx.kind]
+      || "Item: ") + ctx.title;
+  $("#opt-maxitems-row").hidden = !isBulkKind(ctx.kind);
   $("#opt-subfolder").value = "";
   $("#opt-maxitems").value = 0;
   $("#opt-subs").checked = true;
@@ -388,8 +585,8 @@ function openModal(ctx) {
     hint.textContent = "none selected = all video formats";
     box.append(hint);
   } else {
-    $("#opt-formats-row").hidden = ctx.kind !== "collection";
-    if (ctx.kind === "collection") {
+    $("#opt-formats-row").hidden = !isBulkKind(ctx.kind);
+    if (isBulkKind(ctx.kind)) {
       box.innerHTML = "";
       ["h.264", "MPEG4", "512Kb MPEG4", "Ogg Video", "Matroska", "QuickTime"]
         .forEach((name) => {
@@ -421,11 +618,34 @@ $("#modal-go").onclick = () => {
   };
   const sub = $("#opt-subfolder").value.trim();
   if (sub) options.subfolder = sub;
-  if (modalCtx.kind === "collection")
+  if (isBulkKind(modalCtx.kind))
     options.max_items = parseInt($("#opt-maxitems").value || "0", 10);
   $("#modal").hidden = true;
   queueJob({ kind: modalCtx.kind, target: modalCtx.target, title: modalCtx.title, options });
 };
+
+/* --------------------------------------------------------------- player */
+function openPlayer({ identifier, title, file }) {
+  $("#player-title").textContent = title || identifier;
+  // archive.org's own embed player — handles every format and multi-file
+  // items via its built-in playlist. Optionally deep-link to one file.
+  let src = `https://archive.org/embed/${encodeURIComponent(identifier)}`;
+  if (file && file.name) {
+    src += "/" + String(file.name).split("/").map(encodeURIComponent).join("/");
+  }
+  $("#player-media").innerHTML =
+    `<iframe src="${esc(src)}" allow="fullscreen; autoplay; encrypted-media" allowfullscreen></iframe>`;
+  $("#player").hidden = false;
+}
+function closePlayer() {
+  $("#player").hidden = true;
+  $("#player-media").innerHTML = "";   // stop playback / free the connection
+}
+$("#player-close").onclick = closePlayer;
+$("#player").onclick = (e) => { if (e.target.id === "player") closePlayer(); };
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && !$("#player").hidden) closePlayer();
+});
 
 async function queueJob(body) {
   try {
@@ -521,6 +741,56 @@ async function removeJob(id) {
   catch (e) { toast(e.message, true); }
 }
 
+/* --------------------------------------------------------------- history */
+async function recordHistory(entry) {
+  try {
+    await api("/api/history", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(entry),
+    });
+  } catch (e) { /* history is best-effort */ }
+  loadRecent();
+}
+
+async function loadRecent() {
+  const box = $("#recent");
+  // only meaningful on the browse landing view
+  if (state.view !== "search" || state.q || state.collectionId) { box.hidden = true; return; }
+  let items = [];
+  try { items = (await api("/api/history?limit=30")).history; } catch (e) { return; }
+  if (!items.length) { box.hidden = true; box.innerHTML = ""; return; }
+  box.innerHTML = `<div class="recent-head">Recent</div><div class="recent-list"></div>`;
+  const list = $(".recent-list", box);
+  const icon = { search: "🔍", collection: "📁", item: "🎬", account: "👤" };
+  for (const it of items) {
+    const chip = mkBtn("", null, "recent-chip");
+    chip.innerHTML = `<span class="ri">${icon[it.kind] || "·"}</span><span>${esc(it.label)}</span>`;
+    chip.title = it.kind === "search" ? `Search: ${it.label}` : it.label;
+    chip.onclick = () => replayHistory(it);
+    list.append(chip);
+  }
+  box.hidden = false;
+}
+
+function replayHistory(it) {
+  const d = it.data || {};
+  if (it.kind === "search") {
+    const q = d.q || it.label;
+    $("#search-input").value = q;
+    $$("input[name=stype]").forEach((x) => (x.checked = x.value === (d.type || "collection")));
+    if (d.sort !== undefined) $("#sort-select").value = d.sort;
+    doSearch(q);
+  } else if (it.kind === "collection") {
+    $$("input[name=stype]").forEach((x) => (x.checked = x.value === "collection"));
+    openCollection(d.cid || it.key);
+  } else if (it.kind === "account") {
+    $$("input[name=stype]").forEach((x) => (x.checked = x.value === "account"));
+    openAccount(d.handle || it.key);
+  } else {
+    openItem(d.identifier || it.key);
+  }
+}
+
 /* --------------------------------------------------------------- settings */
 async function loadSettings() {
   try {
@@ -532,8 +802,23 @@ async function loadSettings() {
     $("#set-disk").textContent =
       `${fmtBytes(s.disk_free)} free of ${fmtBytes(s.disk_total)} (${fmtBytes(s.disk_used)} used)`;
     $("#disk-info").textContent = `${fmtBytes(s.disk_free)} free`;
+    const n = s.history_count || 0;
+    $("#set-history").textContent = n
+      ? `${n.toLocaleString()} entr${n === 1 ? "y" : "ies"} stored`
+      : "Nothing stored yet";
+    $("#clear-history").disabled = !n;
   } catch (e) { toast(e.message, true); }
 }
+
+$("#clear-history").onclick = async () => {
+  if (!confirm("Clear all search and browsing history?")) return;
+  try {
+    await api("/api/history", { method: "DELETE" });
+    toast("History cleared");
+    loadSettings();
+    loadRecent();
+  } catch (e) { toast(e.message, true); }
+};
 $("#save-settings").onclick = async () => {
   const body = { concurrency: parseInt($("#set-concurrency").value, 10) };
   const ck = $("#set-cookies").value.trim();
@@ -569,3 +854,4 @@ jobsTimer = setInterval(() => {
   else refreshJobs(); // keep badge fresh
 }, 2000);
 refreshJobs();
+loadRecent();

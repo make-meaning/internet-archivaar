@@ -4,15 +4,15 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#171c22">
-  <title>Internet Archive Video Downloader</title>
-  <link rel="stylesheet" href="/assets/style.css?v=1.4.0">
+  <title>Internet Archivaar</title>
+  <link rel="stylesheet" href="/assets/style.css?v=1.7.0">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%93%BC%3C/text%3E%3C/svg%3E">
 </head>
 <body>
   <header>
     <div class="brand">
       <span class="logo">📼</span>
-      <h1>Internet Archive <span>Video Downloader</span></h1>
+      <h1><span>Internet</span> Archivaar</h1>
     </div>
     <nav>
       <button data-tab="browse" class="active">Browse</button>
@@ -28,6 +28,7 @@
         <div class="seg">
           <label><input type="radio" name="stype" value="collection" checked> Collections</label>
           <label><input type="radio" name="stype" value="video"> Videos</label>
+          <label><input type="radio" name="stype" value="account"> Users</label>
         </div>
         <input type="search" id="search-input" placeholder="Search, or paste an archive.org/details/… link" autocomplete="off">
         <select id="sort-select">
@@ -41,6 +42,7 @@
       </form>
 
       <div id="crumbs" class="crumbs" hidden></div>
+      <div id="recent" class="recent" hidden></div>
       <div id="results" class="grid"></div>
       <div id="pager" class="pager" hidden>
         <button id="prev-page">← Prev</button>
@@ -81,6 +83,13 @@
         <div class="field">
           <span>Disk</span>
           <div id="set-disk" class="muted"></div>
+        </div>
+        <div class="field">
+          <span>Search &amp; browsing history</span>
+          <div class="hist-row">
+            <span id="set-history" class="muted"></span>
+            <button id="clear-history" type="button" class="small ghost">Clear history</button>
+          </div>
         </div>
         <button id="save-settings">Save</button>
         <span id="settings-saved" class="saved" hidden>Saved ✓</span>
@@ -136,8 +145,19 @@
     </div>
   </div>
 
+  <!-- VIDEO PLAYER MODAL -->
+  <div id="player" class="modal player" hidden>
+    <div class="player-box">
+      <div class="player-head">
+        <strong id="player-title"></strong>
+        <button id="player-close" class="ghost small">✕ Close</button>
+      </div>
+      <div id="player-media" class="player-media"></div>
+    </div>
+  </div>
+
   <div id="toast" class="toast" hidden></div>
 
-  <script src="/assets/app.js?v=1.4.0"></script>
+  <script src="/assets/app.js?v=1.7.0"></script>
 </body>
 </html>

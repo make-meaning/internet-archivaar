@@ -1,8 +1,8 @@
 services:
-  ia-video-downloader:
+  internet-archivaar:
     build: .
-    image: ia-video-downloader:latest
-    container_name: ia-video-downloader
+    image: internet-archivaar:latest
+    container_name: internet-archivaar
     ports:
       - "8000:8000"
     environment:

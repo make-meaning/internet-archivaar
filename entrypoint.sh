@@ -18,7 +18,7 @@ mkdir -p "${CONFIG_DIR:-/config}" "${DOWNLOAD_DIR:-/downloads}"
 chown "$PUID:$PGID" "${CONFIG_DIR:-/config}" 2>/dev/null || true
 chown "$PUID:$PGID" "${DOWNLOAD_DIR:-/downloads}" 2>/dev/null || true
 
-echo "Internet Archive Video Downloader"
+echo "Internet Archivaar"
 echo "  user  : abc ($PUID:$PGID)"
 echo "  config: ${CONFIG_DIR:-/config}"
 echo "  output: ${DOWNLOAD_DIR:-/downloads}"
