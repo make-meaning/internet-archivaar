@@ -19,8 +19,10 @@ with an Unraid Community Applications template.
 - **By format** – the item view lists every video format present
   (`h.264 — 341 files, 84.7 GB`, `Cinepack — 340 files, 165 GB`, …) each with a one-click
   *Download all* button.
-- **Sortable file list** – click the File / Format / Source / Size headers to sort;
-  the list scrolls inside its card instead of overflowing.
+- **Collapsible per-video list** – the file list groups derivatives + subtitles under
+  the video they belong to. Each video is a collapsible row showing its formats,
+  sources and sizes, with a per-format ⬇ and a *⬇ All* for the whole video. Sort by
+  title, total size, or number of formats; *Expand all* / *Collapse all*.
 - **Format options** – per download you choose:
   - which video formats to keep (populated from the item's actual files), or leave blank
     for *all*

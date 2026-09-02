@@ -195,7 +195,10 @@ async function openItem(identifier, autoModal) {
       $("#browse-empty").hidden = false;
     };
 
-    const CAP = 500;
+    const CAP = 800;
+    const groups = groupFiles(it.files);
+    const totalFiles = it.files.length;
+
     const fmtList = (it.formats || []).map((f) => `
       <div class="fmt-row">
         <span class="fmt-name">${esc(f.format)}</span>
@@ -216,65 +219,84 @@ async function openItem(identifier, autoModal) {
           </div>
         </div>
         ${fmtList ? `<div class="fmt-list"><h3>Download by format</h3>${fmtList}</div>` : ""}
-        <div class="file-wrap">
-          <table class="file-table">
-            <thead><tr>
-              <th data-sort="name">File</th>
-              <th data-sort="format">Format</th>
-              <th data-sort="source">Source</th>
-              <th data-sort="size" class="num">Size</th>
-              <th class="act"></th>
-            </tr></thead>
-            <tbody id="file-tbody"></tbody>
-          </table>
+        <div class="grp-section">
+          <div class="grp-controls">
+            <h3>${groups.length.toLocaleString()} video${groups.length === 1 ? "" : "s"}
+              <span class="muted">· ${totalFiles.toLocaleString()} files</span></h3>
+            <div class="grp-controls-r">
+              <label>Sort
+                <select id="grp-sort">
+                  <option value="title">Title</option>
+                  <option value="size">Total size</option>
+                  <option value="formats">Formats</option>
+                </select>
+              </label>
+              <button id="grp-toggle" class="small ghost">Expand all</button>
+            </div>
+          </div>
+          <div id="grp-list" class="grp-list"></div>
         </div>
       </div>`;
     $("#pager").hidden = true;
 
-    const sort = { key: "kind", dir: 1 };
-    const cmp = (a, b) => {
-      let r;
-      if (sort.key === "size") r = (a.size || 0) - (b.size || 0);
-      else if (sort.key === "kind")
-        r = (a.kind === "video" ? 0 : 1) - (b.kind === "video" ? 0 : 1) ||
-            String(a.name).localeCompare(b.name);
-      else r = String(a[sort.key] || "").localeCompare(String(b[sort.key] || ""),
-                                                       undefined, { numeric: true });
-      return r * sort.dir;
+    let expanded = false;
+    const sortGroups = (key) => {
+      const g = [...groups];
+      if (key === "size") g.sort((a, b) => b.bytes - a.bytes);
+      else if (key === "formats") g.sort((a, b) => b.formats.length - a.formats.length
+        || a.title.localeCompare(b.title, undefined, { numeric: true }));
+      else g.sort((a, b) => a.title.localeCompare(b.title, undefined, { numeric: true }));
+      return g;
     };
-    const renderRows = () => {
-      const sorted = [...it.files].sort(cmp);
-      const shown = sorted.slice(0, CAP);
-      $("#file-tbody").innerHTML = shown.map((f) => `
-        <tr>
-          <td class="fname">${esc(f.name)}</td>
-          <td>${esc(f.format || "")}</td>
-          <td>${esc(f.source || "")}</td>
-          <td class="num">${f.size ? fmtBytes(f.size) : ""}</td>
-          <td class="act"><button class="small ghost" data-file="${esc(f.name)}">⬇</button></td>
-        </tr>`).join("") +
-        (sorted.length > CAP
-          ? `<tr><td colspan="5" class="muted">…and ${sorted.length - CAP} more — use “Download by format” or “Download this item…”.</td></tr>`
+    const renderGroups = () => {
+      const g = sortGroups($("#grp-sort").value);
+      const shown = g.slice(0, CAP);
+      $("#grp-list").innerHTML = shown.map((grp, i) => `
+        <details class="grp"${expanded ? " open" : ""}>
+          <summary>
+            <span class="grp-title">${esc(grp.title)}</span>
+            <span class="grp-meta">${grp.formats.length} format${grp.formats.length === 1 ? "" : "s"} · ${fmtBytes(grp.bytes)}</span>
+            <button class="small grp-dl" data-grp="${i}" title="Download every format of this video">⬇ All</button>
+          </summary>
+          <table class="grp-files">
+            ${grp.files.map((f) => `
+              <tr>
+                <td>${esc(f.format || (f.kind === "subtitle" ? "Subtitle" : "—"))}</td>
+                <td class="muted">${esc(f.source || "")}</td>
+                <td class="muted fname">${esc(f.name.split("/").pop())}</td>
+                <td class="num">${f.size ? fmtBytes(f.size) : ""}</td>
+                <td class="act"><button class="small ghost" data-file="${esc(f.name)}">⬇</button></td>
+              </tr>`).join("")}
+          </table>
+        </details>`).join("") +
+        (g.length > CAP
+          ? `<p class="muted grp-more">…and ${(g.length - CAP).toLocaleString()} more videos — use “Download by format” or “Download this item…” to grab them all.</p>`
           : "");
-      $$("#file-tbody [data-file]").forEach((b) =>
-        b.onclick = () => queueJob({
-          kind: "file", target: identifier, title: `${it.title} — ${b.dataset.file}`,
+
+      $$("#grp-list .grp-dl").forEach((b) => b.onclick = (e) => {
+        e.preventDefault();
+        const grp = shown[+b.dataset.grp];
+        queueJob({
+          kind: "file", target: identifier, title: `${it.title} — ${grp.title}`,
+          options: { files: grp.files.map((f) => f.name), subtitles: false },
+        });
+      });
+      $$("#grp-list [data-file]").forEach((b) => b.onclick = (e) => {
+        e.preventDefault();
+        queueJob({
+          kind: "file", target: identifier,
+          title: `${it.title} — ${b.dataset.file.split("/").pop()}`,
           options: { files: [b.dataset.file], subtitles: false },
-        }));
-      $$(".file-table th[data-sort]").forEach((th) => {
-        const active = th.dataset.sort === sort.key;
-        th.innerHTML = th.textContent.replace(/[ ▲▼]+$/, "") +
-          (active ? `<span class="arrow"> ${sort.dir > 0 ? "▲" : "▼"}</span>` : "");
+        });
       });
     };
-    $$(".file-table th[data-sort]").forEach((th) =>
-      th.onclick = () => {
-        const k = th.dataset.sort;
-        if (sort.key === k) sort.dir *= -1;
-        else { sort.key = k; sort.dir = 1; }
-        renderRows();
-      });
-    renderRows();
+    $("#grp-sort").onchange = renderGroups;
+    $("#grp-toggle").onclick = () => {
+      expanded = !expanded;
+      $("#grp-toggle").textContent = expanded ? "Collapse all" : "Expand all";
+      $$("#grp-list .grp").forEach((d) => (d.open = expanded));
+    };
+    renderGroups();
 
     $("#dl-item").onclick = () =>
       openModal({ kind: "item", target: identifier, title: it.title, formats: it.formats });
@@ -288,6 +310,36 @@ async function openItem(identifier, autoModal) {
     if (autoModal)
       openModal({ kind: "item", target: identifier, title: it.title, formats: it.formats });
   } catch (e) { showError(e); }
+}
+
+/* Group an item's files by the underlying video (derivatives + subtitles fold
+   into their source). */
+function fileStem(name) {
+  return String(name).split("/").pop()
+    .replace(/\.(mp4|m4v|mkv|avi|ogv|ogg|mov|webm|mpe?g|m2v|mj2|flv|wmv|asf|ts|3gp|divx|rm|vob|srt|vtt|sub|ass|ssa|scc)$/i, "")
+    .replace(/\.(autogenerated|auto|asr|en|eng|und)$/i, "")
+    .replace(/[._-](\d{1,4}kb|hi-?res|hd|sd|edit|ia|web|small|large|512kb|64kb)$/i, "")
+    .trim();
+}
+
+function groupFiles(files) {
+  const map = new Map();
+  for (const f of files) {
+    const key = fileStem(f.original || f.name) || (f.name || "file");
+    let g = map.get(key);
+    if (!g) { g = { title: key, files: [], formats: [], bytes: 0 }; map.set(key, g); }
+    g.files.push(f);
+    g.bytes += f.size || 0;
+    if (f.kind === "video" && f.format && !g.formats.includes(f.format))
+      g.formats.push(f.format);
+  }
+  for (const g of map.values()) {
+    g.files.sort((a, b) =>
+      (a.kind === "video" ? 0 : 1) - (b.kind === "video" ? 0 : 1) ||
+      (b.size || 0) - (a.size || 0));
+  }
+  return [...map.values()].sort((a, b) =>
+    a.title.localeCompare(b.title, undefined, { numeric: true }));
 }
 
 function updatePager(total) {

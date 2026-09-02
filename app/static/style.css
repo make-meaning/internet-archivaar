@@ -120,17 +120,40 @@ main { max-width: 1180px; margin: 0 auto; padding: 20px; }
 .fmt-row .fmt-name { font-weight: 600; min-width: 130px; }
 .fmt-row .fmt-meta { flex: 1 1 auto; color: var(--muted); font-size: 13px; }
 
-.file-wrap { margin-top: 16px; border-top: 1px solid var(--border); overflow-x: auto; }
-.file-table { width: 100%; min-width: 520px; border-collapse: collapse; }
-.file-table th, .file-table td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--border); font-size: 13px; vertical-align: top; }
-.file-table th { color: var(--muted); font-weight: 500; position: sticky; top: 0; background: var(--bg-card); }
-.file-table th[data-sort] { cursor: pointer; user-select: none; white-space: nowrap; }
-.file-table th[data-sort]:hover { color: var(--text); }
-.file-table th .arrow { opacity: .6; font-size: 10px; }
-.file-table td.num, .file-table th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.file-table td.fname { overflow-wrap: anywhere; }
-.file-table td.act { text-align: right; }
-.file-table td.act button { white-space: nowrap; }
+/* grouped file list */
+.grp-section { margin-top: 16px; border-top: 1px solid var(--border); padding-top: 12px; }
+.grp-controls { display: flex; align-items: center; justify-content: space-between; gap: 10px 16px; flex-wrap: wrap; margin-bottom: 10px; }
+.grp-controls h3 { font-size: 13px; font-weight: 600; }
+.grp-controls h3 .muted { font-weight: 400; }
+.grp-controls-r { display: flex; align-items: center; gap: 12px; }
+.grp-controls-r label { color: var(--muted); font-size: 13px; display: flex; align-items: center; gap: 6px; }
+.grp-controls-r select { padding: 4px 8px; }
+
+.grp-list { display: flex; flex-direction: column; }
+.grp { border-bottom: 1px solid var(--border); }
+.grp:first-child { border-top: 1px solid var(--border); }
+.grp > summary {
+  display: flex; align-items: center; gap: 10px 14px; flex-wrap: wrap;
+  padding: 9px 4px; cursor: pointer; list-style: none;
+}
+.grp > summary::-webkit-details-marker { display: none; }
+.grp > summary::before {
+  content: "▸"; color: var(--muted); font-size: 11px;
+  transition: transform .15s; flex-shrink: 0;
+}
+.grp[open] > summary::before { transform: rotate(90deg); }
+.grp > summary:hover { background: var(--bg-elev); }
+.grp-title { font-weight: 600; flex: 1 1 200px; overflow-wrap: anywhere; }
+.grp-meta { color: var(--muted); font-size: 12px; white-space: nowrap; }
+.grp .grp-dl { flex-shrink: 0; }
+
+.grp-files { width: 100%; border-collapse: collapse; margin: 2px 0 10px; }
+.grp-files td { padding: 5px 8px; font-size: 12px; border-top: 1px solid var(--border); vertical-align: top; }
+.grp-files td:first-child { padding-left: 22px; font-weight: 500; font-size: 13px; }
+.grp-files td.fname { color: var(--muted); overflow-wrap: anywhere; }
+.grp-files td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.grp-files td.act { text-align: right; }
+.grp-more { padding: 12px 4px 2px; }
 
 /* queue */
 .queue-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
@@ -189,3 +212,90 @@ main { max-width: 1180px; margin: 0 auto; padding: 20px; }
 .toast.err { border-color: var(--err); color: #ffd7d7; }
 
 .spinner { text-align: center; padding: 40px; color: var(--muted); }
+
+/* ---------------------------------------------------------------- mobile */
+/* Baseline target: iPhone 16 Pro (402 x 874 CSS px), notch + home indicator. */
+@media (max-width: 640px) {
+  body { font-size: 15px; }
+
+  /* 16px inputs stop iOS Safari from zooming the page on focus */
+  input, select, textarea { font-size: 16px; padding: 9px 11px; }
+
+  button { padding: 9px 14px; }
+  button.small { padding: 7px 11px; font-size: 13px; }
+
+  /* header respects the notch / dynamic island and side insets */
+  header {
+    padding: 10px max(14px, env(safe-area-inset-right)) 10px max(14px, env(safe-area-inset-left));
+    padding-top: max(10px, env(safe-area-inset-top));
+    gap: 10px;
+  }
+  .brand h1 { font-size: 15px; }
+  .brand h1 span { display: none; }
+  nav { width: 100%; }
+  nav button { flex: 1; text-align: center; padding: 9px 6px; }
+
+  main {
+    padding: 14px max(12px, env(safe-area-inset-right)) 24px max(12px, env(safe-area-inset-left));
+  }
+
+  /* search: stack the controls, full-width targets */
+  .search-bar { gap: 8px; }
+  .search-bar > * { width: 100%; }
+  .seg label { flex: 1; text-align: center; }
+  .search-bar #search-input { flex: none; }
+
+  /* two-up result cards */
+  .grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+  .card .body { padding: 9px 10px; }
+  .card .actions button { padding: 8px 6px; min-height: 40px; }
+
+  .crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+  .crumbs .small { margin-left: 0; }
+
+  .pager { gap: 10px; }
+  .pager button { flex: 1; min-height: 42px; }
+
+  /* item detail */
+  .detail { padding: 12px; }
+  .detail-head img { width: 100%; max-width: 100%; }
+  .detail-head .info { flex-basis: auto; }
+  .fmt-row { gap: 6px; }
+  .fmt-row .fmt-name { min-width: 0; }
+  .fmt-row button { width: 100%; }
+
+  /* queue */
+  .queue-head { flex-direction: column; align-items: flex-start; gap: 6px; }
+  .job-top { flex-wrap: wrap; }
+  .job-actions button { min-height: 38px; }
+
+  /* modal becomes a bottom sheet */
+  .modal { align-items: flex-end; padding: 0; }
+  .modal-box {
+    width: 100%;
+    max-width: 100%;
+    max-height: 90vh;
+    border-radius: 14px 14px 0 0;
+    padding: 18px 16px 0;
+  }
+  .opt-row { flex-direction: column; gap: 8px; padding: 12px 0; }
+  .opt-label { width: auto; padding-top: 0; }
+  .opt-row label { padding: 2px 0; }
+  .opt-row input[type="number"], .opt-row input[type="text"] { width: 100%; }
+  .modal-actions {
+    position: sticky;
+    bottom: 0;
+    margin: 0 -16px;
+    padding: 12px 16px;
+    padding-bottom: max(12px, env(safe-area-inset-bottom));
+    background: var(--bg-elev);
+    border-top: 1px solid var(--border);
+  }
+  .modal-actions button { flex: 1; min-height: 44px; }
+
+  /* toast clears the home indicator */
+  .toast {
+    left: 12px; right: 12px; transform: none; text-align: center;
+    bottom: max(16px, env(safe-area-inset-bottom));
+  }
+}

@@ -113,6 +113,7 @@ def api_item(identifier: str):
             enriched.append({
                 "name": fl.get("name"), "format": fl.get("format"),
                 "size": int(fl.get("size") or 0), "source": fl.get("source"),
+                "original": fl.get("original"),
                 "length": fl.get("length"), "height": fl.get("height"),
                 "width": fl.get("width"), "kind": kind,
                 "url": archive.download_url(identifier, fl.get("name", "")),
