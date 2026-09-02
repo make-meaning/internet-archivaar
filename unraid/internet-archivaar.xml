@@ -1,14 +1,14 @@
 <?xml version="1.0"?>
 <Container version="2">
   <Name>Internet-Archivaar</Name>
-  <Repository>ghcr.io/OWNER/internet-archivaar:latest</Repository>
-  <Registry>https://ghcr.io/OWNER/internet-archivaar</Registry>
+  <Repository>ghcr.io/make-meaning/internet-archivaar:latest</Repository>
+  <Registry>https://ghcr.io/make-meaning/internet-archivaar</Registry>
   <Network>bridge</Network>
   <MyIP/>
   <Shell>sh</Shell>
   <Privileged>false</Privileged>
-  <Support>https://github.com/OWNER/internet-archivaar/issues</Support>
-  <Project>https://github.com/OWNER/internet-archivaar</Project>
+  <Support>https://github.com/make-meaning/internet-archivaar/issues</Support>
+  <Project>https://github.com/make-meaning/internet-archivaar</Project>
   <Overview>
     Browse video collections on the Internet Archive (archive.org) from a simple web GUI
     and download individual videos or entire collections. Choose which formats to pull
